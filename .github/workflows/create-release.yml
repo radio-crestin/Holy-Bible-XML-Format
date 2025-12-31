@@ -13,10 +13,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout repository (sparse)
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          sparse-checkout: |
+            scripts
+            data
+          sparse-checkout-cone-mode: false
+          fetch-depth: 1
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -82,19 +86,3 @@ jobs:
             --title "${{ steps.get-tag.outputs.tag }}" \
             --notes-file release_notes.md \
             bibles.xml
-
-      - name: Configure Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Commit and push bibles.xml to master
-        run: |
-          git checkout master
-          git add bibles.xml
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "chore: generate bibles.xml for ${{ steps.get-tag.outputs.tag }}"
-            git push origin master
-          fi

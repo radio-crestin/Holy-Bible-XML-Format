@@ -19,17 +19,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.release.tag_name || github.event.inputs.tag }}
-          fetch-depth: 0
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
       - name: Determine tag
         id: get-tag
         run: |
@@ -38,6 +27,21 @@ jobs:
           else
             echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
           fi
+
+      - name: Checkout repository (sparse, tag only)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.get-tag.outputs.tag }}
+          sparse-checkout: |
+            scripts
+            data
+          sparse-checkout-cone-mode: false
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
       - name: Generate bibles.xml
         id: generate
@@ -60,21 +64,6 @@ jobs:
           echo "Generated bibles.xml:"
           head -50 bibles.xml
 
-      - name: Configure Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Commit and push bibles.xml
-        run: |
-          git add bibles.xml
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "chore: generate bibles.xml for ${{ steps.get-tag.outputs.tag }}"
-            git push origin HEAD:${{ github.event.release.target_commitish || 'master' }}
-          fi
-
       - name: Update release with bibles.xml and release notes
         if: github.event_name == 'release'
         env:
@@ -84,26 +73,26 @@ jobs:
           gh release upload "${{ steps.get-tag.outputs.tag }}" bibles.xml --clobber
 
           # Generate release notes
-          cat > release_notes.md << 'EOF'
+          cat > release_notes.md << EOF
           ## Holy Bible XML Format - ${{ steps.get-tag.outputs.tag }}
 
           This release contains **${{ steps.generate.outputs.total_translations }}** Bible translations in XML format.
 
           ### Quick Start
 
-          Download the `bibles.xml` index file to get a complete directory of all available translations:
+          Download the \`bibles.xml\` index file to get a complete directory of all available translations:
 
-          ```bash
+          \`\`\`bash
           curl -LO https://github.com/${{ github.repository }}/releases/download/${{ steps.get-tag.outputs.tag }}/bibles.xml
-          ```
+          \`\`\`
 
           ### Direct Bible Download
 
-          Each Bible can be downloaded directly using the URLs in `bibles.xml`:
+          Each Bible can be downloaded directly using the URLs in \`bibles.xml\`:
 
-          ```
+          \`\`\`
           https://github.com/${{ github.repository }}/raw/refs/tags/${{ steps.get-tag.outputs.tag }}/data/{BibleName}.xml
-          ```
+          \`\`\`
 
           ### What's in bibles.xml?
 
