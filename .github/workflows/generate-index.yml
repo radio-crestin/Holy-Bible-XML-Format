@@ -1,0 +1,128 @@
+name: Generate Bibles Index on Release
+
+on:
+  release:
+    types: [published]
+
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., v1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  generate-bibles-index:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.event.inputs.tag }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Determine tag
+        id: get-tag
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate bibles.xml
+        id: generate
+        run: |
+          python scripts/generate_index.py \
+            --tag "${{ steps.get-tag.outputs.tag }}" \
+            --repo-url "https://github.com/${{ github.repository }}" \
+            --verbose
+
+          # Extract stats for release notes
+          TOTAL=$(grep -o '<total_translations>[^<]*' bibles.xml | sed 's/<total_translations>//')
+          echo "total_translations=$TOTAL" >> $GITHUB_OUTPUT
+
+      - name: Verify bibles.xml was generated
+        run: |
+          if [ ! -f bibles.xml ]; then
+            echo "Error: bibles.xml was not generated"
+            exit 1
+          fi
+          echo "Generated bibles.xml:"
+          head -50 bibles.xml
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit and push bibles.xml
+        run: |
+          git add bibles.xml
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: generate bibles.xml for ${{ steps.get-tag.outputs.tag }}"
+            git push origin HEAD:${{ github.event.release.target_commitish || 'master' }}
+          fi
+
+      - name: Update release with bibles.xml and release notes
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Upload bibles.xml as release artifact
+          gh release upload "${{ steps.get-tag.outputs.tag }}" bibles.xml --clobber
+
+          # Generate release notes
+          cat > release_notes.md << 'EOF'
+          ## Holy Bible XML Format - ${{ steps.get-tag.outputs.tag }}
+
+          This release contains **${{ steps.generate.outputs.total_translations }}** Bible translations in XML format.
+
+          ### Quick Start
+
+          Download the `bibles.xml` index file to get a complete directory of all available translations:
+
+          ```bash
+          curl -LO https://github.com/${{ github.repository }}/releases/download/${{ steps.get-tag.outputs.tag }}/bibles.xml
+          ```
+
+          ### Direct Bible Download
+
+          Each Bible can be downloaded directly using the URLs in `bibles.xml`:
+
+          ```
+          https://github.com/${{ github.repository }}/raw/refs/tags/${{ steps.get-tag.outputs.tag }}/data/{BibleName}.xml
+          ```
+
+          ### What's in bibles.xml?
+
+          The index file contains:
+          - Translation name
+          - Filename
+          - Direct download URL
+          - Copyright information (when available)
+          - Source link (when available)
+
+          ### Documentation
+
+          See the [README](https://github.com/${{ github.repository }}#readme) for usage examples in Python and JavaScript.
+          EOF
+
+          # Update release with new notes (append to existing)
+          EXISTING_BODY=$(gh release view "${{ steps.get-tag.outputs.tag }}" --json body -q .body || echo "")
+          NEW_BODY="${EXISTING_BODY}
+
+          $(cat release_notes.md)"
+
+          gh release edit "${{ steps.get-tag.outputs.tag }}" --notes "$NEW_BODY"
