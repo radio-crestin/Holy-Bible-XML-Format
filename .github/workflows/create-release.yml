@@ -1,0 +1,100 @@
+name: Create Release on Tag
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Get tag name
+        id: get-tag
+        run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Generate bibles.xml
+        id: generate
+        run: |
+          python scripts/generate_index.py \
+            --tag "${{ steps.get-tag.outputs.tag }}" \
+            --repo-url "https://github.com/${{ github.repository }}" \
+            --verbose
+
+          # Extract stats for release notes
+          TOTAL=$(grep -o '<total_translations>[^<]*' bibles.xml | sed 's/<total_translations>//')
+          echo "total_translations=$TOTAL" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat > release_notes.md << EOF
+          ## Holy Bible XML Format - ${{ steps.get-tag.outputs.tag }}
+
+          This release contains **${{ steps.generate.outputs.total_translations }}** Bible translations in XML format.
+
+          ### Quick Start
+
+          Download the \`bibles.xml\` index file to get a complete directory of all available translations:
+
+          \`\`\`bash
+          curl -LO https://github.com/${{ github.repository }}/releases/download/${{ steps.get-tag.outputs.tag }}/bibles.xml
+          \`\`\`
+
+          ### Direct Bible Download
+
+          Each Bible can be downloaded directly using the URLs in \`bibles.xml\`:
+
+          \`\`\`
+          https://github.com/${{ github.repository }}/raw/refs/tags/${{ steps.get-tag.outputs.tag }}/data/{BibleName}.xml
+          \`\`\`
+
+          ### What's in bibles.xml?
+
+          The index file contains:
+          - Translation name
+          - Filename
+          - Direct download URL
+          - Copyright information (when available)
+          - Source link (when available)
+
+          ### Documentation
+
+          See the [README](https://github.com/${{ github.repository }}#readme) for usage examples in Python and JavaScript.
+          EOF
+
+          gh release create "${{ steps.get-tag.outputs.tag }}" \
+            --title "${{ steps.get-tag.outputs.tag }}" \
+            --notes-file release_notes.md \
+            bibles.xml
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit and push bibles.xml to master
+        run: |
+          git checkout master
+          git add bibles.xml
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: generate bibles.xml for ${{ steps.get-tag.outputs.tag }}"
+            git push origin master
+          fi
