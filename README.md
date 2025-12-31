@@ -28,13 +28,24 @@ Holy-Bible-XML-Format/
 ├── .github/
 │   └── workflows/
 │       └── generate-index.yml  # GitHub Action for releases
-├── bibles.xml               # Auto-generated index of all Bibles
 └── README.md
 ```
 
 ## Using bibles.xml
 
 The `bibles.xml` file is automatically generated on each release and provides a structured directory of all available Bible translations.
+
+### Accessing bibles.xml
+
+You can access the latest `bibles.xml` directly from the releases:
+
+```bash
+# Get the latest bibles.xml
+curl -L https://github.com/radio-crestin/Holy-Bible-XML-Format/releases/latest/download/bibles.xml
+
+# Or from a specific release tag
+curl -L https://github.com/radio-crestin/Holy-Bible-XML-Format/raw/refs/tags/v1.0.0/bibles.xml
+```
 
 ### bibles.xml Structure
 
@@ -62,18 +73,6 @@ The `bibles.xml` file is automatically generated on each release and provides a 
     <!-- ... more translations -->
   </translations>
 </bibles>
-```
-
-### Accessing bibles.xml
-
-You can access the latest `bibles.xml` directly from the releases:
-
-```bash
-# Get the latest bibles.xml
-curl -L https://github.com/radio-crestin/Holy-Bible-XML-Format/releases/latest/download/bibles.xml
-
-# Or from a specific release tag
-curl -L https://github.com/radio-crestin/Holy-Bible-XML-Format/raw/refs/tags/v1.0.0/bibles.xml
 ```
 
 ### Example: Parsing bibles.xml in Python
